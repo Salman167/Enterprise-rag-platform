@@ -1,0 +1,11 @@
+Plateforme RAG Entreprise — Document de politique type
+
+POLITIQUE DE CONSERVATION DES DONNÉES (Région UE)
+
+1. Les données personnelles sont conservées pendant 365 jours maximum, sauf obligation légale de conservation plus longue.
+2. Les employés peuvent demander l'effacement des données en vertu de l'article 17 du RGPD.
+3. Tous les accès aux documents sont enregistrés dans le journal d'audit.
+4. Les données doivent rester dans les régions approuvées par l'UE (eu-west-1, eu-central-1).
+5. Les données personnelles identifiables doivent être masquées avant l'enregistrement.
+
+CONTACT CONFORMITÉ : compliance@enterprise-rag.eu

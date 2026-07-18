@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+*.log
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+*.swp
+
+# Data & uploads
+data/uploads/
+data/processed/
+*.db
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# OS
+.DS_Store
+Thumbs.db

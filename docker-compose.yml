@@ -1,0 +1,238 @@
+x-service-env: &service-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: enterprise_rag
+  POSTGRES_USER: rag_user
+  POSTGRES_PASSWORD: rag_password
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  QDRANT_HOST: qdrant
+  QDRANT_PORT: 6333
+  QDRANT_COLLECTION: enterprise_documents
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: minioadmin
+  MINIO_SECRET_KEY: minioadmin
+  MINIO_BUCKET: enterprise-documents
+  MINIO_SECURE: "false"
+  JWT_SECRET: dev-secret-change-in-production
+  DATA_REGION: EU
+  AUTH_SERVICE_URL: http://auth-service:8000
+  USER_SERVICE_URL: http://user-service:8000
+  UPLOAD_SERVICE_URL: http://upload-service:8000
+  OCR_SERVICE_URL: http://ocr-service:8000
+  CHUNKING_SERVICE_URL: http://chunking-service:8000
+  EMBEDDING_SERVICE_URL: http://embedding-service:8000
+  METADATA_SERVICE_URL: http://metadata-service:8000
+  RETRIEVAL_SERVICE_URL: http://retrieval-service:8000
+  QUERY_SERVICE_URL: http://query-service:8000
+  CITATION_SERVICE_URL: http://citation-service:8000
+  FEEDBACK_SERVICE_URL: http://feedback-service:8000
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: enterprise_rag
+      POSTGRES_USER: rag_user
+      POSTGRES_PASSWORD: rag_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d enterprise_rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *service-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      <<: *service-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      <<: *service-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  upload-service:
+    build:
+      context: .
+      dockerfile: services/upload-service/Dockerfile
+    ports:
+      - "8003:8000"
+    environment:
+      <<: *service-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  ocr-service:
+    build:
+      context: .
+      dockerfile: services/ocr-service/Dockerfile
+    ports:
+      - "8004:8000"
+    environment:
+      <<: *service-env
+
+  chunking-service:
+    build:
+      context: .
+      dockerfile: services/chunking-service/Dockerfile
+    ports:
+      - "8005:8000"
+    environment:
+      <<: *service-env
+
+  embedding-service:
+    build:
+      context: .
+      dockerfile: services/embedding-service/Dockerfile
+    ports:
+      - "8006:8000"
+    environment:
+      <<: *service-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
+  metadata-service:
+    build:
+      context: .
+      dockerfile: services/metadata-service/Dockerfile
+    ports:
+      - "8007:8000"
+    environment:
+      <<: *service-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  retrieval-service:
+    build:
+      context: .
+      dockerfile: services/retrieval-service/Dockerfile
+    ports:
+      - "8008:8000"
+    environment:
+      <<: *service-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
+  query-service:
+    build:
+      context: .
+      dockerfile: services/query-service/Dockerfile
+    ports:
+      - "8009:8000"
+    environment:
+      <<: *service-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      retrieval-service:
+        condition: service_started
+      citation-service:
+        condition: service_started
+
+  citation-service:
+    build:
+      context: .
+      dockerfile: services/citation-service/Dockerfile
+    ports:
+      - "8010:8000"
+    environment:
+      <<: *service-env
+
+  feedback-service:
+    build:
+      context: .
+      dockerfile: services/feedback-service/Dockerfile
+    ports:
+      - "8011:8000"
+    environment:
+      <<: *service-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  minio_data:

@@ -1,0 +1,11 @@
+Enterprise RAG Platform — Sample Policy Document
+
+DATA RETENTION POLICY (EU Region)
+
+1. Personal data is retained for a maximum of 365 days unless legal obligations require longer retention.
+2. Employees may request data erasure under GDPR Article 17.
+3. All document access is logged in the audit trail.
+4. Data must remain within EU-approved regions (eu-west-1, eu-central-1).
+5. PII must be redacted before logging.
+
+COMPLIANCE CONTACT: compliance@enterprise-rag.eu

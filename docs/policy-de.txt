@@ -1,0 +1,11 @@
+Enterprise RAG Plattform — Beispielrichtliniendokument
+
+DATENAUFBEWAHRUNGSRICHTLINIE (EU-Region)
+
+1. Personenbezogene Daten werden maximal 365 Tage aufbewahrt, sofern keine gesetzlichen Aufbewahrungspflichten eine längere Frist erfordern.
+2. Mitarbeiter können die Löschung gemäß DSGVO Artikel 17 beantragen.
+3. Alle Dokumentenzugriffe werden im Audit-Protokoll protokolliert.
+4. Daten müssen in EU-genehmigten Regionen verbleiben (eu-west-1, eu-central-1).
+5. Personenbezogene Daten müssen vor der Protokollierung anonymisiert werden.
+
+COMPLIANCE-KONTAKT: compliance@enterprise-rag.eu

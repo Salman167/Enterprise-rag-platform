@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "enterprise-rag-common"
+version = "0.1.0"
+description = "Shared models, config, and utilities for Enterprise RAG Platform"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "email-validator>=2.1.0",
+    "httpx>=0.26.0",
+    "python-jose[cryptography]>=3.3.0",
+    "bcrypt>=4.0.0",
+    "redis>=5.0.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.9",
+    "structlog>=24.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["enterprise_rag_common*"]
