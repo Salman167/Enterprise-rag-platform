@@ -11,6 +11,7 @@ logs:
 
 health:
 	curl -s http://localhost:8000/health | python -m json.tool
+	curl -s http://localhost:8000/ready | python -m json.tool
 
 seed:
 	curl -s -X POST http://localhost:8000/api/v1/auth/login \

@@ -1,21 +1,26 @@
 """API Gateway — single entry point for all Enterprise RAG microservices."""
 
+import asyncio
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from enterprise_rag_common.config import settings
 from enterprise_rag_common.enums import AuditAction
 from enterprise_rag_common.gdpr import redact_pii
 from enterprise_rag_common.models import (
+    DownstreamHealth,
     FeedbackRequest,
     HealthResponse,
     LoginRequest,
     QueryRequest,
+    ReadinessResponse,
     TokenResponse,
     UserCreate,
     UserResponse,
@@ -91,9 +96,62 @@ async def proxy_request(
     return response.text
 
 
+DOWNSTREAM_SERVICES = {
+    "auth-service": settings.auth_service_url,
+    "user-service": settings.user_service_url,
+    "upload-service": settings.upload_service_url,
+    "ocr-service": settings.ocr_service_url,
+    "chunking-service": settings.chunking_service_url,
+    "embedding-service": settings.embedding_service_url,
+    "metadata-service": settings.metadata_service_url,
+    "retrieval-service": settings.retrieval_service_url,
+    "query-service": settings.query_service_url,
+    "citation-service": settings.citation_service_url,
+    "feedback-service": settings.feedback_service_url,
+}
+
+
+async def _probe_service(client: httpx.AsyncClient, name: str, base_url: str) -> DownstreamHealth:
+    started = time.perf_counter()
+    try:
+        response = await client.get(f"{base_url.rstrip('/')}/health", timeout=3.0)
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        if response.status_code == 200:
+            return DownstreamHealth(name=name, status="healthy", latency_ms=latency_ms)
+        return DownstreamHealth(name=name, status="unhealthy", latency_ms=latency_ms)
+    except (httpx.HTTPError, httpx.TimeoutException):
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        return DownstreamHealth(name=name, status="unreachable", latency_ms=latency_ms)
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(service=SERVICE_NAME, data_region=settings.data_region)
+
+
+@app.get("/ready", response_model=ReadinessResponse)
+async def ready(request: Request):
+    """Deep readiness probe for load balancers and Ingress.
+
+    /health stays shallow (process is up). /ready fans out to every
+    downstream /health so north-south traffic is only admitted when
+    the east-west mesh can serve a request.
+    """
+    client: httpx.AsyncClient = request.app.state.http
+    probes = await asyncio.gather(
+        *(_probe_service(client, name, url) for name, url in DOWNSTREAM_SERVICES.items())
+    )
+    ready_ok = all(item.status == "healthy" for item in probes)
+    payload = ReadinessResponse(
+        status="ready" if ready_ok else "degraded",
+        data_region=settings.data_region,
+        ready=ready_ok,
+        services=list(probes),
+    )
+    return JSONResponse(
+        status_code=200 if ready_ok else 503,
+        content=payload.model_dump(),
+    )
 
 
 @app.post("/api/v1/auth/register", response_model=UserResponse)

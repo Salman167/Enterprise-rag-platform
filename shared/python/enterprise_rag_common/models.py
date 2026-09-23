@@ -14,6 +14,20 @@ class HealthResponse(BaseModel):
     data_region: str = "EU"
 
 
+class DownstreamHealth(BaseModel):
+    name: str
+    status: str
+    latency_ms: int | None = None
+
+
+class ReadinessResponse(BaseModel):
+    service: str = "api-gateway"
+    status: str
+    data_region: str = "EU"
+    ready: bool
+    services: list[DownstreamHealth] = Field(default_factory=list)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
