@@ -128,6 +128,75 @@ flowchart LR
     Query --> LLM[OpenAI / Azure OpenAI]
 ```
 
+## End-to-end flow
+
+A document is searchable only after indexing. Upload stores the file. A later question returns a written answer plus the passages that answer came from.
+
+Models (defaults in `shared/python/enterprise_rag_common/config.py`):
+
+| Job | Model | When |
+|-----|--------|------|
+| Vectors | `text-embedding-3-small` (1536-d) | Index time and again on the question |
+| Answer | `gpt-4o-mini` (temperature `0.1`) | After chunks are retrieved |
+
+Both call `https://api.openai.com/v1` unless `OPENAI_BASE_URL` points at Azure OpenAI. With no valid `OPENAI_API_KEY`, indexing stores a local hash vector and the answer is a preview of the matched chunks. Citations still return.
+
+### 1. Login
+
+`POST /api/v1/auth/login` → `services/api-gateway/app/main.py` → `services/auth-service/app/main.py`.
+
+Auth checks the bcrypt password, writes an audit row, and returns a JWT (HS256, 60 minutes) with user id, role, and region. Later calls send `Authorization: Bearer <token>`.
+
+### 2. Upload
+
+`POST /api/v1/documents/upload` → gateway → `services/upload-service/app/main.py`.
+
+The upload service saves the bytes in MinIO at `owner_id/document_id/filename` and inserts a PostgreSQL catalog row with status `UPLOADED`. The response is a `document_id`. The file is not searchable yet.
+
+### 3. Index
+
+`POST /api/v1/documents/{id}/index` → gateway → `services/upload-service/app/main.py` (`process_document`). That function calls the next three services in order and updates the catalog after each one:
+
+| Step | Python file | What it does | Status after |
+|------|-------------|--------------|--------------|
+| 1 | `services/ocr-service/app/main.py` | Reads the object from MinIO and extracts text (PDF, Word, Excel, PPT, TXT, CSV) | `OCR_DONE` |
+| 2 | `services/chunking-service/app/main.py` | Splits on sentence endings, including Arabic `؟`, into ~800-character pieces with 120-character overlap | `CHUNKING` |
+| 3 | `services/embedding-service/app/main.py` | Calls `text-embedding-3-small` via `shared/python/enterprise_rag_common/llm.py` and upserts vectors into Qdrant collection `enterprise_documents` | `INDEXED` |
+
+Embedding is the last file that writes data. Upload then returns `chunks_indexed`, and the gateway sends that JSON back.
+
+### 4. Query
+
+`POST /api/v1/query` is the RAG path: retrieve passages first, then generate an answer only from those passages.
+
+| Order | Python file | What it does |
+|-------|-------------|--------------|
+| 1 | `services/api-gateway/app/main.py` | Checks the JWT (`security.py`) and redacts email, phone, and card numbers (`gdpr.py`) |
+| 2 | `services/query-service/app/main.py` | Starts the LangGraph: `retrieve` → `generate` → `END` |
+| 3 | `services/retrieval-service/app/main.py` | Embeds the question with `llm.py`, searches Qdrant (cosine), optional locale/department filter |
+| 4 | `services/retrieval-service/app/main.py` | Re-ranks `2 × top_k` hits as **70% cosine + 30% token overlap**, returns top 5 |
+| 5 | `services/query-service/app/main.py` | `generate` calls `gpt-4o-mini` with a locale prompt (EN / AR / FR / DE). The graph stops here |
+| 6 | `services/citation-service/app/main.py` | Builds sources: filename, page, chunk index, 300-character excerpt, score |
+| 7 | `services/query-service/app/main.py` | Returns `answer`, `citations`, `locale`, `query_id`, `model` |
+| 8 | `services/api-gateway/app/main.py` | Forwards that JSON to the client |
+
+Response shape:
+
+```json
+{
+  "answer": "Written reply based only on the retrieved passages",
+  "citations": [{ "filename": "policy.pdf", "chunk_index": 2, "excerpt": "...", "score": 0.84 }],
+  "locale": "en",
+  "query_id": "...",
+  "model": "gpt-4o-mini"
+}
+```
+
+### 5. After the answer
+
+- `POST /api/v1/feedback` → `services/feedback-service/app/main.py` stores a 1–5 rating against `query_id`. It does not retrain the model.
+- `DELETE /api/v1/users/me` → `services/user-service/app/main.py` erases the user (GDPR Art. 17). `services/embedding-service/app/main.py` can delete that document’s Qdrant points by `document_id`.
+
 ### Microservices (12)
 
 | Service | Host port | Responsibility |
