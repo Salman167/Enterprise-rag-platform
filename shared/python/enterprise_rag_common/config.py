@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     qdrant_collection: str = "enterprise_documents"
 
-    minio_endpoint: str = "localhost:9000"
+    minio_endpoint: str = "localhost:9100"  # Compose publishes host 9100 → container 9000
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "enterprise-documents"

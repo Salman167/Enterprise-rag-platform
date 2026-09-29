@@ -34,3 +34,9 @@ jobs:
 
       - name: Build Query Service image
         run: docker build -f services/query-service/Dockerfile .
+
+      - name: Build Retrieval Service image
+        run: docker build -f services/retrieval-service/Dockerfile .
+
+      - name: Build Citation Service image
+        run: docker build -f services/citation-service/Dockerfile .

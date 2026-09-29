@@ -1,11 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
 
-from jose import JWTError, jwt
 import bcrypt
 from jose import JWTError, jwt
-from typing import Any
 
 from enterprise_rag_common.config import settings
 from enterprise_rag_common.enums import UserRole
