@@ -1,4 +1,4 @@
-.PHONY: up down logs health seed test
+.PHONY: up down logs health ready seed test
 
 up:
 	docker compose up -d --build
@@ -11,7 +11,9 @@ logs:
 
 health:
 	curl -s http://localhost:8000/health | python -m json.tool
-	curl -s http://localhost:8000/ready | python -m json.tool
+
+ready:
+	curl -s -w "\nHTTP %{http_code}\n" http://localhost:8000/ready | python -m json.tool
 
 seed:
 	curl -s -X POST http://localhost:8000/api/v1/auth/login \
