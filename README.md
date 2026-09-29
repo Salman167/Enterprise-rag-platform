@@ -321,6 +321,91 @@ curl -X DELETE http://localhost:8000/api/v1/users/me \
 
 Makefile shortcuts: `make up`, `make health`, `make seed`, `make logs`, `make down`.
 
+## Scaling to Many Users
+
+Docker Compose is fine for demos. To serve many people (teams, departments, or multiple companies), treat the stack as a Kubernetes workload and grow each layer independently.
+
+### 1. Horizontal scale (more concurrent users)
+
+| Layer | What to scale | Why |
+|-------|---------------|-----|
+| **api-gateway** | Replicas behind LoadBalancer / Ingress | North-south entry; already 2 replicas in K8s YAML |
+| **query-service + retrieval-service** | Replicas | Hot path for every chat; LangGraph + hybrid search |
+| **upload / OCR / chunk / embed** | Replicas or workers | Heavy during bulk upload; keep query path free |
+| **auth / user / metadata** | Modest replicas | Lower QPS but must stay available |
+
+Use HPA (CPU / RPS) on query and gateway first. Keep Postgres, Qdrant, MinIO, and Redis as **managed or StatefulSets** — do not run them as throwaway pods.
+
+### 2. Multi-tenancy (many teams / companies)
+
+Build on what the platform already tags today (`department`, `data_region`, `allowed_roles`, JWT `sub` / `role`):
+
+| Pattern | How it maps here | When to use |
+|---------|------------------|-------------|
+| **Shared cluster, soft isolation** | Filter Qdrant by `department` / locale; scope MinIO paths by `owner_id`; enforce RBAC at the gateway | One enterprise, many departments |
+| **Tenant ID on every row** | Add `tenant_id` to Postgres catalog, JWT claims, and Qdrant payload; gateway injects it on every proxy call | SaaS / multiple customers on one stack |
+| **Hard isolation** | Separate namespaces, collections, or even clusters per region (`EU` vs `MENA`) | Banks, government, PDPL / GDPR residency |
+
+Rule: **never let Tenant A retrieve Tenant B vectors**. Retrieval filters and document `allowed_roles` are the first line of defense; tenant claims in JWT are the second.
+
+### 3. Throughput and cost controls
+
+- Put **Redis** on the query path for rate limiting and short-lived session / answer cache (wired in config, reserved for this)
+- Cap `top_k` and document size; queue large OCR/embed jobs instead of the current sync saga when traffic grows
+- Use **Azure OpenAI** with regional quotas; fall back to a second deployment or queue when rate-limited
+- CDN / Ingress TLS only in front of the gateway — data plane stays private
+- Autoscale OCR/embed separately from query so indexing spikes do not starve chat users
+
+### 4. Rollout path
+
+1. Move Compose → AKS/EKS with gateway LoadBalancer (already sketched)
+2. Add Ingress + TLS + HPA on gateway and query-service
+3. Introduce `tenant_id` (or use `department` strictly) on metadata + Qdrant filters
+4. Move ingestion to async workers (queue) when many users upload at once
+5. Add Prometheus / Grafana (Phase 7) so you scale on real RPS and p95 latency
+
+## Governance
+
+Governance is how you decide **who can do what**, **what the model may answer**, and **how you prove it later**. This platform already has the core controls; expand them as more people join.
+
+### What exists today
+
+| Control | Where | Purpose |
+|---------|-------|---------|
+| **RBAC** | JWT role + gateway checks | `admin` / `compliance_officer` / `analyst` / `viewer` |
+| **Document ACLs** | `allowed_roles` on catalog rows | Limit who can see which files |
+| **Data residency** | `data_region` = `EU` \| `MENA` | Keep storage and LLM region-aligned |
+| **Consent** | Registration `gdpr_consent` + audit | Lawful processing record |
+| **PII redaction** | Gateway on `/api/v1/query` | Reduce sensitive data in prompts/logs |
+| **Citations** | citation-service | Answers are attributable to sources |
+| **Audit trail** | Audit log + Art. 30 style retention | Who uploaded, queried, deleted, gave feedback |
+| **Right to erasure** | `DELETE /api/v1/users/me` + vector delete | GDPR Art. 17 / PDPL alignment |
+| **Feedback loop** | feedback-service | Human review of answer quality |
+
+### How to use governance day to day
+
+1. **Assign least-privilege roles** — most users `viewer` or `analyst`; only compliance sees audit logs; only admin erases accounts.
+2. **Tag every document** with `department`, `locale`, and `data_region` at upload so retrieval cannot leak across boundaries.
+3. **Require citations in production** (`include_citations: true`) so regulated answers are defensible.
+4. **Review audit logs** (`GET /api/v1/audit-logs`) for upload, query, delete, and consent events.
+5. **Use feedback ratings** to flag weak answers; feed that into prompt or retrieval tuning.
+6. **Erase on request** — cascade user, documents, and vectors; keep only what retention policy allows in audit metadata.
+7. **Pin the LLM region** — Azure OpenAI Sweden / West Europe or UAE so residency matches `DATA_REGION`.
+
+### Governance to add as you grow
+
+| Capability | Intent |
+|------------|--------|
+| **Tenant / org policies** | Per-tenant allowed models, max upload size, blocked file types |
+| **Prompt / content filters** | Block disallowed topics before LangGraph `generate` |
+| **Human-in-the-loop** | Compliance approve high-risk answers before return |
+| **Model registry** | Approve which `LLM_MODEL` / embedding model each region may use |
+| **Retention jobs** | Auto-purge docs and vectors after policy windows |
+| **SIEM export** | Ship audit logs to Splunk / Sentinel for enterprise SOC |
+| **mTLS / service mesh** | Authenticate east-west calls between microservices |
+
+Interview framing: *access governance (RBAC + ACLs), data governance (region + erasure + audit), and AI governance (grounded answers, citations, PII redaction, feedback).*
+
 ## Production Deployment (EU / MENA)
 
 | Component | EU Recommendation | MENA Recommendation |
@@ -340,10 +425,12 @@ Makefile shortcuts: `make up`, `make health`, `make seed`, `make logs`, `make do
 - [x] Phase 3: RAG query with LangGraph + citations
 - [x] Phase 4: GDPR/RBAC/multi-language foundations
 - [x] Phase 4.1: Gateway `/ready` probe for load-balancer / Ingress admission
+- [x] Phase 4.2: README — scale to many users + governance model
 - [ ] Phase 5: SharePoint/Confluence connectors
-- [ ] Phase 6: Helm charts + ArgoCD GitOps
+- [ ] Phase 6: Helm charts + ArgoCD GitOps (HPA, Ingress, multi-tenant namespaces)
 - [ ] Phase 7: Prometheus metrics + Grafana dashboards
 - [ ] Phase 8: React admin UI with Arabic RTL
+- [ ] Phase 9: Tenant ID hard isolation + async ingestion queue
 
 ## License
 
