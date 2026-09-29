@@ -30,3 +30,6 @@ data/processed/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local resume / portfolio artifacts (keep out of the app repo)
+resume/

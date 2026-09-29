@@ -288,7 +288,7 @@ TOKEN="<access_token_from_login>"
 
 curl -X POST http://localhost:8000/api/v1/documents/upload \
   -H "Authorization: Bearer $TOKEN" \
-  -F "file=@./docs/sample-policy.pdf" \
+  -F "file=@./docs/sample-policy.txt" \
   -F "department=Compliance" \
   -F "locale=en"
 

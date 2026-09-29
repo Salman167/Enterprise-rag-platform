@@ -12,7 +12,6 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from enterprise_rag_common.config import settings
-from enterprise_rag_common.enums import AuditAction
 from enterprise_rag_common.gdpr import redact_pii
 from enterprise_rag_common.models import (
     DownstreamHealth,

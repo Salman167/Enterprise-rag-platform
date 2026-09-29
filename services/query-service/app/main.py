@@ -10,7 +10,7 @@ from langgraph.graph import END, StateGraph
 from openai import OpenAI
 
 from enterprise_rag_common.config import settings
-from enterprise_rag_common.enums import AuditAction, SupportedLocale
+from enterprise_rag_common.enums import SupportedLocale
 from enterprise_rag_common.llm import has_valid_openai_key
 from enterprise_rag_common.models import HealthResponse, QueryResponse
 
